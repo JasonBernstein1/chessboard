@@ -1,0 +1,1128 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Chess Game Viewer</title>
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=Playfair+Display:wght@400;600;700&family=JetBrains+Mono:wght@300;400;500&display=swap');
+
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+  :root {
+    --bg: #0e0e0f;
+    --surface: #161618;
+    --panel: #1c1c1f;
+    --border: #2a2a2e;
+    --light-sq: #e8d5b0;
+    --dark-sq: #8b5e3c;
+    --accent: #d4a843;
+    --accent2: #7ec8a0;
+    --text: #e8e2d8;
+    --muted: #7a756e;
+    --highlight: rgba(212,168,67,0.35);
+    --moved: rgba(126,200,160,0.3);
+  }
+
+  body {
+    background: var(--bg);
+    color: var(--text);
+    font-family: 'JetBrains Mono', monospace;
+    min-height: 100vh;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    padding: 24px 16px;
+    background-image: radial-gradient(ellipse at 20% 20%, #1a1408 0%, transparent 60%),
+                      radial-gradient(ellipse at 80% 80%, #0a1a12 0%, transparent 60%);
+  }
+
+  h1 {
+    font-family: 'Playfair Display', serif;
+    font-size: 1.6rem;
+    font-weight: 600;
+    letter-spacing: 0.02em;
+    color: var(--accent);
+    margin-bottom: 20px;
+    text-align: center;
+  }
+
+  .layout {
+    display: flex;
+    gap: 20px;
+    align-items: center;
+    width: 100%;
+    max-width: 1160px;
+    flex-wrap: nowrap;
+    justify-content: center;
+  }
+
+  /* ── BOARD ── */
+  .board-wrap {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 8px;
+  }
+
+  .captured-row {
+    display: flex;
+    gap: 2px;
+    height: 26px;
+    align-items: center;
+    width: 720px;
+    font-size: 1.2rem;
+  }
+
+  #board {
+    display: grid;
+    grid-template-columns: repeat(8, 90px);
+    grid-template-rows: repeat(8, 90px);
+    border: 2px solid var(--border);
+    box-shadow: 0 20px 60px rgba(0,0,0,0.7), 0 0 0 1px #3a3020;
+    position: relative;
+  }
+
+  .sq {
+    width: 90px; height: 90px;
+    display: flex; align-items: center; justify-content: center;
+    font-size: 4rem;
+    cursor: default;
+    position: relative;
+    transition: background 0.1s;
+    user-select: none;
+  }
+  .sq.light { background: var(--light-sq); }
+  .sq.dark  { background: var(--dark-sq); }
+  .sq.selected { background: var(--highlight) !important; }
+  .sq.last-move { box-shadow: inset 0 0 0 3px var(--accent2); }
+  .sq.valid-move::after {
+    content: '';
+    position: absolute;
+    width: 20px; height: 20px;
+    border-radius: 50%;
+    background: rgba(0,0,0,0.25);
+    pointer-events: none;
+  }
+  .sq.valid-capture::after {
+    content: '';
+    position: absolute;
+    inset: 0;
+    border-radius: 0;
+    background: transparent;
+    box-shadow: inset 0 0 0 5px rgba(0,0,0,0.2);
+    pointer-events: none;
+  }
+
+  .piece {
+    cursor: grab;
+    transition: transform 0.1s;
+    font-size: 3rem;
+    line-height: 1;
+    z-index: 1;
+    pointer-events: auto;
+    /* White pieces: filled glyph recolored white with dark outline */
+    color: #ffffff;
+    -webkit-text-stroke: 3px #000;
+    paint-order: stroke fill;
+    filter: drop-shadow(0 1px 4px rgba(0,0,0,0.5));
+  }
+  .piece.black {
+    color: #1a1a1a;
+    -webkit-text-stroke: 3px #ffffff;
+    paint-order: stroke fill;
+    filter: drop-shadow(0 1px 3px rgba(0,0,0,0.7));
+  }
+  .piece:active { cursor: grabbing; transform: scale(1.15); }
+  .piece.dragging { opacity: 0.25; }
+  .piece:active { cursor: grabbing; transform: scale(1.2); }
+  .piece.dragging { opacity: 0.3; }
+
+  .coords-file {
+    display: grid;
+    grid-template-columns: repeat(8, 90px);
+    width: 720px;
+  }
+  .coords-file span, .coords-rank span {
+    font-size: 0.65rem;
+    color: var(--muted);
+    text-align: center;
+    font-family: 'JetBrains Mono', monospace;
+  }
+  .coords-rank {
+    display: grid;
+    grid-template-rows: repeat(8, 90px);
+    position: absolute;
+    left: -18px;
+    top: 0;
+  }
+  .coords-rank span { display: flex; align-items: center; }
+  .board-outer { position: relative; padding-left: 20px; }
+
+  /* ── SIDE PANEL ── */
+  .panel {
+    background: var(--panel);
+    border: 1px solid var(--border);
+    border-radius: 4px;
+    padding: 16px;
+    width: 300px;
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+    flex-shrink: 0;
+  }
+
+  .panel-section label {
+    font-size: 0.6rem;
+    letter-spacing: 0.15em;
+    text-transform: uppercase;
+    color: var(--muted);
+    display: block;
+    margin-bottom: 6px;
+  }
+
+  textarea {
+    width: 100%;
+    height: 100px;
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 2px;
+    color: var(--text);
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 0.68rem;
+    padding: 8px;
+    resize: vertical;
+    line-height: 1.5;
+  }
+  textarea:focus { outline: 1px solid var(--accent); }
+  textarea::placeholder { color: var(--muted); }
+
+  .btn-row { display: flex; gap: 8px; }
+
+  button {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 2px;
+    color: var(--text);
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 0.7rem;
+    padding: 7px 12px;
+    cursor: pointer;
+    transition: all 0.15s;
+    flex: 1;
+  }
+  button:hover { border-color: var(--accent); color: var(--accent); }
+  button.primary { background: var(--accent); color: #0e0e0f; border-color: var(--accent); font-weight: 500; }
+  button.primary:hover { background: #e0b850; }
+
+  /* Navigation */
+  .nav-row { display: flex; gap: 6px; }
+  .nav-row button { font-size: 1rem; padding: 6px; flex: 1; }
+
+  /* Move table */
+  .move-list {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 2px;
+    height: 260px;
+    overflow-y: auto;
+    font-size: 0.72rem;
+  }
+  .move-list::-webkit-scrollbar { width: 4px; }
+  .move-list::-webkit-scrollbar-track { background: transparent; }
+  .move-list::-webkit-scrollbar-thumb { background: var(--border); }
+
+  .move-table { width: 100%; border-collapse: collapse; }
+  .move-table tr:nth-child(even) { background: rgba(255,255,255,0.03); }
+  .move-table td {
+    padding: 4px 6px;
+    vertical-align: middle;
+  }
+  .move-table .td-num {
+    color: var(--muted);
+    width: 32px;
+    text-align: right;
+    padding-right: 8px;
+    font-size: 0.65rem;
+    user-select: none;
+  }
+  .move-table .td-move {
+    width: 50%;
+  }
+  .mv {
+    display: block;
+    width: 100%;
+    padding: 3px 8px;
+    border-radius: 2px;
+    cursor: pointer;
+    transition: background 0.1s;
+    white-space: nowrap;
+  }
+  .mv:hover { background: rgba(212,168,67,0.15); }
+  .mv.active { background: var(--accent); color: #0e0e0f; border-radius: 2px; }
+
+  /* Status */
+  .status {
+    font-size: 0.68rem;
+    color: var(--muted);
+    min-height: 18px;
+  }
+  .status.error { color: #e06060; }
+  .status.ok    { color: var(--accent2); }
+
+  /* Drag ghost */
+  #drag-ghost {
+    position: fixed;
+    pointer-events: none;
+    font-size: 2.6rem;
+    z-index: 9999;
+    transform: translate(-50%, -50%);
+    filter: drop-shadow(0 4px 8px rgba(0,0,0,0.8));
+    display: none;
+  }
+
+  /* Promotion picker */
+  #promo-modal {
+    display: none;
+    position: fixed;
+    inset: 0;
+    background: rgba(0,0,0,0.7);
+    z-index: 10000;
+    align-items: center;
+    justify-content: center;
+  }
+  #promo-modal.show { display: flex; }
+  .promo-box {
+    background: var(--panel);
+    border: 1px solid var(--accent);
+    border-radius: 4px;
+    padding: 16px 20px;
+    text-align: center;
+  }
+  .promo-box h3 {
+    font-family: 'Playfair Display', serif;
+    color: var(--accent);
+    font-size: 1rem;
+    margin-bottom: 12px;
+    letter-spacing: 0.05em;
+  }
+  .promo-choices { display: flex; gap: 8px; }
+  .promo-btn {
+    width: 90px; height: 90px;
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 3px;
+    cursor: pointer;
+    font-size: 4rem;
+    display: flex; align-items: center; justify-content: center;
+    color: #fff;
+    -webkit-text-stroke: 3px #000;
+    paint-order: stroke fill;
+    transition: border-color 0.15s, background 0.15s;
+  }
+  .promo-btn.black-piece {
+    color: #1a1a1a;
+    -webkit-text-stroke: 3px #ffffff;
+  }
+  .promo-btn:hover { border-color: var(--accent); background: rgba(212,168,67,0.1); }
+</style>
+</head>
+<body>
+
+<div class="layout">
+  <div class="board-wrap">
+    <div class="captured-row" id="cap-black"></div>
+    <div class="board-outer">
+      <div class="coords-rank" id="coords-rank"></div>
+      <div id="board"></div>
+    </div>
+    <div class="coords-file" id="coords-file"></div>
+    <div class="captured-row" id="cap-white"></div>
+  </div>
+
+  <div class="panel">
+    <div class="panel-section">
+      <label>Load game (PGN)</label>
+      <textarea id="pgn-input" placeholder='[Event "..."]\n[White "..."]\n...\n\n1. e4 e5 2. Nf3 ...'></textarea>
+      <div class="btn-row" style="margin-top:8px">
+        <button class="primary" onclick="loadPGN()">Load Game</button>
+        <button onclick="loadExample()">Example</button>
+        <button onclick="resetBoard()">Reset</button>
+      </div>
+    </div>
+
+    <div class="panel-section">
+      <label>Navigate</label>
+      <div class="nav-row">
+        <button onclick="goTo(0)" title="Start">⏮</button>
+        <button onclick="stepBack()" title="Back">◀</button>
+        <button onclick="stepForward()" title="Forward">▶</button>
+        <button onclick="goTo(history.length)" title="End">⏭</button>
+      </div>
+    </div>
+
+    <div class="panel-section">
+      <label>Moves</label>
+      <div class="move-list" id="move-list"></div>
+    </div>
+
+    <div id="status" class="status">Ready — load a PGN or move pieces freely.</div>
+  </div>
+</div>
+
+<div id="drag-ghost"></div>
+<div id="fly-piece"></div>
+
+<script>
+// ─────────────────────────────────────────────
+// Chess logic (no library — self-contained)
+// ─────────────────────────────────────────────
+
+const FILES = 'abcdefgh';
+
+// Piece maps
+const UNICODE = {
+  wK:"♚", wQ:"♛", wR:"♜", wB:"♝", wN:"♞", wP:"♟",
+  bK:"♚", bQ:"♛", bR:"♜", bB:"♝", bN:"♞", bP:"♟"
+};
+const PIECE_SVG = {
+  wP: "data:image/svg+xml;charset=utf-8,%3Csvg%20xmlns%3D%22http%3A//www.w3.org/2000/svg%22%20viewBox%3D%220%200%2045%2045%22%3E%3Cpath%20d%3D%22M%2022%2C9%20A%204%2C4%200%201%201%2022%2C17%20A%204%2C4%200%201%201%2022%2C9%20z%22%20fill%3D%22%23fff%22%20stroke%3D%22%23000%22%20stroke-width%3D%221.5%22/%3E%3Cpath%20d%3D%22M%2020%2C17%20Q%2016%2C17%2014%2C22%20Q%2012%2C27%2014%2C28%20L%2030%2C28%20Q%2032%2C27%2030%2C22%20Q%2028%2C17%2024%2C17%20Z%22%20fill%3D%22%23fff%22%20stroke%3D%22%23000%22%20stroke-width%3D%221.5%22%20stroke-linejoin%3D%22round%22/%3E%3Cpath%20d%3D%22M%2014%2C28%20L%2013%2C36%20L%2031%2C36%20L%2030%2C28%20Z%22%20fill%3D%22%23fff%22%20stroke%3D%22%23000%22%20stroke-width%3D%221.5%22%20stroke-linejoin%3D%22round%22/%3E%3Cpath%20d%3D%22M%2011%2C36%20L%2033%2C36%20L%2033%2C39%20L%2011%2C39%20Z%22%20fill%3D%22%23fff%22%20stroke%3D%22%23000%22%20stroke-width%3D%221.5%22%20stroke-linejoin%3D%22round%22/%3E%3C/svg%3E",
+  bP: "data:image/svg+xml;charset=utf-8,%3Csvg%20xmlns%3D%22http%3A//www.w3.org/2000/svg%22%20viewBox%3D%220%200%2045%2045%22%3E%3Cpath%20d%3D%22M%2022%2C9%20A%204%2C4%200%201%201%2022%2C17%20A%204%2C4%200%201%201%2022%2C9%20z%22%20fill%3D%22%23222%22%20stroke%3D%22%23000%22%20stroke-width%3D%221.5%22/%3E%3Cpath%20d%3D%22M%2020%2C17%20Q%2016%2C17%2014%2C22%20Q%2012%2C27%2014%2C28%20L%2030%2C28%20Q%2032%2C27%2030%2C22%20Q%2028%2C17%2024%2C17%20Z%22%20fill%3D%22%23222%22%20stroke%3D%22%23000%22%20stroke-width%3D%221.5%22%20stroke-linejoin%3D%22round%22/%3E%3Cpath%20d%3D%22M%2014%2C28%20L%2013%2C36%20L%2031%2C36%20L%2030%2C28%20Z%22%20fill%3D%22%23222%22%20stroke%3D%22%23000%22%20stroke-width%3D%221.5%22%20stroke-linejoin%3D%22round%22/%3E%3Cpath%20d%3D%22M%2011%2C36%20L%2033%2C36%20L%2033%2C39%20L%2011%2C39%20Z%22%20fill%3D%22%23222%22%20stroke%3D%22%23000%22%20stroke-width%3D%221.5%22%20stroke-linejoin%3D%22round%22/%3E%3C/svg%3E",
+  wR: "data:image/svg+xml;charset=utf-8,%3Csvg%20xmlns%3D%22http%3A//www.w3.org/2000/svg%22%20viewBox%3D%220%200%2045%2045%22%3E%3Cpath%20d%3D%22M%209%2C39%20L%2036%2C39%20L%2036%2C36%20L%209%2C36%20Z%22%20fill%3D%22%23fff%22%20stroke%3D%22%23000%22%20stroke-width%3D%221.5%22%20stroke-linejoin%3D%22round%22/%3E%3Cpath%20d%3D%22M%2012%2C36%20L%2012%2C30%20L%2033%2C30%20L%2033%2C36%20Z%22%20fill%3D%22%23fff%22%20stroke%3D%22%23000%22%20stroke-width%3D%221.5%22%20stroke-linejoin%3D%22round%22/%3E%3Cpath%20d%3D%22M%2012%2C30%20Q%209%2C26%2010%2C14%20L%2014%2C14%20L%2014%2C18%20L%2019%2C18%20L%2019%2C14%20L%2026%2C14%20L%2026%2C18%20L%2031%2C18%20L%2031%2C14%20L%2035%2C14%20Q%2036%2C26%2033%2C30%20Z%22%20fill%3D%22%23fff%22%20stroke%3D%22%23000%22%20stroke-width%3D%221.5%22%20stroke-linejoin%3D%22round%22/%3E%3Cpath%20d%3D%22M%2010%2C14%20L%2035%2C14%22%20fill%3D%22none%22%20stroke%3D%22%23000%22%20stroke-width%3D%221.5%22/%3E%3Cpath%20d%3D%22M%2011%2C9%20L%2011%2C14%20L%2014%2C14%20L%2014%2C9%20Z%20M%2020%2C9%20L%2020%2C14%20L%2025%2C14%20L%2025%2C9%20Z%20M%2031%2C9%20L%2031%2C14%20L%2034%2C14%20L%2034%2C9%20Z%22%20fill%3D%22%23fff%22%20stroke%3D%22%23000%22%20stroke-width%3D%221.5%22%20stroke-linejoin%3D%22round%22/%3E%3C/svg%3E",
+  bR: "data:image/svg+xml;charset=utf-8,%3Csvg%20xmlns%3D%22http%3A//www.w3.org/2000/svg%22%20viewBox%3D%220%200%2045%2045%22%3E%3Cpath%20d%3D%22M%209%2C39%20L%2036%2C39%20L%2036%2C36%20L%209%2C36%20Z%22%20fill%3D%22%23222%22%20stroke%3D%22%23000%22%20stroke-width%3D%221.5%22%20stroke-linejoin%3D%22round%22/%3E%3Cpath%20d%3D%22M%2012%2C36%20L%2012%2C30%20L%2033%2C30%20L%2033%2C36%20Z%22%20fill%3D%22%23222%22%20stroke%3D%22%23000%22%20stroke-width%3D%221.5%22%20stroke-linejoin%3D%22round%22/%3E%3Cpath%20d%3D%22M%2012%2C30%20Q%209%2C26%2010%2C14%20L%2014%2C14%20L%2014%2C18%20L%2019%2C18%20L%2019%2C14%20L%2026%2C14%20L%2026%2C18%20L%2031%2C18%20L%2031%2C14%20L%2035%2C14%20Q%2036%2C26%2033%2C30%20Z%22%20fill%3D%22%23222%22%20stroke%3D%22%23000%22%20stroke-width%3D%221.5%22%20stroke-linejoin%3D%22round%22/%3E%3Cpath%20d%3D%22M%2010%2C14%20L%2035%2C14%22%20fill%3D%22none%22%20stroke%3D%22%23666%22%20stroke-width%3D%221%22/%3E%3Cpath%20d%3D%22M%2011%2C9%20L%2011%2C14%20L%2014%2C14%20L%2014%2C9%20Z%20M%2020%2C9%20L%2020%2C14%20L%2025%2C14%20L%2025%2C9%20Z%20M%2031%2C9%20L%2031%2C14%20L%2034%2C14%20L%2034%2C9%20Z%22%20fill%3D%22%23222%22%20stroke%3D%22%23000%22%20stroke-width%3D%221.5%22%20stroke-linejoin%3D%22round%22/%3E%3C/svg%3E",
+  wN: "data:image/svg+xml;charset=utf-8,%3Csvg%20xmlns%3D%22http%3A//www.w3.org/2000/svg%22%20viewBox%3D%220%200%2045%2045%22%3E%3Cpath%20d%3D%22M%2022%2C10%20C%2032%2C10%2038%2C18%2038%2C28%20C%2038%2C34%2034%2C38%2028%2C38%20L%2017%2C38%20C%2011%2C38%207%2C34%207%2C28%20C%207%2C20%2014%2C14%2020%2C13%20L%2018%2C8%20C%2020%2C6%2026%2C6%2026%2C9%20Z%22%20fill%3D%22%23fff%22%20stroke%3D%22%23000%22%20stroke-width%3D%221.5%22%20stroke-linejoin%3D%22round%22/%3E%3Cpath%20d%3D%22M%2010%2C39%20L%2035%2C39%20L%2035%2C36%20L%2010%2C36%20Z%22%20fill%3D%22%23fff%22%20stroke%3D%22%23000%22%20stroke-width%3D%221.5%22/%3E%3Ccircle%20cx%3D%2224%22%20cy%3D%2214%22%20r%3D%222.5%22%20fill%3D%22%23000%22/%3E%3Cpath%20d%3D%22M%2012.5%2C27%20C%2011%2C23%2015%2C18%2019%2C20%20C%2021.5%2C21%2021%2C25%2019%2C26%20C%2017%2C27%2015%2C25%2016%2C23%22%20fill%3D%22none%22%20stroke%3D%22%23000%22%20stroke-width%3D%221.2%22%20stroke-linecap%3D%22round%22/%3E%3C/svg%3E",
+  bN: "data:image/svg+xml;charset=utf-8,%3Csvg%20xmlns%3D%22http%3A//www.w3.org/2000/svg%22%20viewBox%3D%220%200%2045%2045%22%3E%3Cpath%20d%3D%22M%2022%2C10%20C%2032%2C10%2038%2C18%2038%2C28%20C%2038%2C34%2034%2C38%2028%2C38%20L%2017%2C38%20C%2011%2C38%207%2C34%207%2C28%20C%207%2C20%2014%2C14%2020%2C13%20L%2018%2C8%20C%2020%2C6%2026%2C6%2026%2C9%20Z%22%20fill%3D%22%23222%22%20stroke%3D%22%23000%22%20stroke-width%3D%221.5%22%20stroke-linejoin%3D%22round%22/%3E%3Cpath%20d%3D%22M%2010%2C39%20L%2035%2C39%20L%2035%2C36%20L%2010%2C36%20Z%22%20fill%3D%22%23222%22%20stroke%3D%22%23000%22%20stroke-width%3D%221.5%22/%3E%3Ccircle%20cx%3D%2224%22%20cy%3D%2214%22%20r%3D%222.5%22%20fill%3D%22%23fff%22/%3E%3Cpath%20d%3D%22M%2012.5%2C27%20C%2011%2C23%2015%2C18%2019%2C20%20C%2021.5%2C21%2021%2C25%2019%2C26%20C%2017%2C27%2015%2C25%2016%2C23%22%20fill%3D%22none%22%20stroke%3D%22%23aaa%22%20stroke-width%3D%221.2%22%20stroke-linecap%3D%22round%22/%3E%3C/svg%3E",
+  wB: "data:image/svg+xml;charset=utf-8,%3Csvg%20xmlns%3D%22http%3A//www.w3.org/2000/svg%22%20viewBox%3D%220%200%2045%2045%22%3E%3Cpath%20d%3D%22M%2022%2C8%20A%203%2C3%200%201%201%2022%2C14%20A%203%2C3%200%201%201%2022%2C8%20Z%22%20fill%3D%22%23fff%22%20stroke%3D%22%23000%22%20stroke-width%3D%221.5%22/%3E%3Cpath%20d%3D%22M%2022%2C14%20C%2013%2C14%209%2C24%2012%2C30%20C%209%2C31%209%2C33%209%2C35%20L%2035%2C35%20C%2035%2C33%2035%2C31%2032%2C30%20C%2035%2C24%2031%2C14%2022%2C14%20Z%22%20fill%3D%22%23fff%22%20stroke%3D%22%23000%22%20stroke-width%3D%221.5%22%20stroke-linejoin%3D%22round%22/%3E%3Cpath%20d%3D%22M%209%2C35%20L%2036%2C35%20L%2036%2C38%20L%209%2C38%20Z%22%20fill%3D%22%23fff%22%20stroke%3D%22%23000%22%20stroke-width%3D%221.5%22%20stroke-linejoin%3D%22round%22/%3E%3Cline%20x1%3D%2215%22%20y1%3D%2232%22%20x2%3D%2229%22%20y2%3D%2232%22%20stroke%3D%22%23000%22%20stroke-width%3D%221.5%22%20stroke-linecap%3D%22round%22/%3E%3C/svg%3E",
+  bB: "data:image/svg+xml;charset=utf-8,%3Csvg%20xmlns%3D%22http%3A//www.w3.org/2000/svg%22%20viewBox%3D%220%200%2045%2045%22%3E%3Cpath%20d%3D%22M%2022%2C8%20A%203%2C3%200%201%201%2022%2C14%20A%203%2C3%200%201%201%2022%2C8%20Z%22%20fill%3D%22%23222%22%20stroke%3D%22%23000%22%20stroke-width%3D%221.5%22/%3E%3Cpath%20d%3D%22M%2022%2C14%20C%2013%2C14%209%2C24%2012%2C30%20C%209%2C31%209%2C33%209%2C35%20L%2035%2C35%20C%2035%2C33%2035%2C31%2032%2C30%20C%2035%2C24%2031%2C14%2022%2C14%20Z%22%20fill%3D%22%23222%22%20stroke%3D%22%23000%22%20stroke-width%3D%221.5%22%20stroke-linejoin%3D%22round%22/%3E%3Cpath%20d%3D%22M%209%2C35%20L%2036%2C35%20L%2036%2C38%20L%209%2C38%20Z%22%20fill%3D%22%23222%22%20stroke%3D%22%23000%22%20stroke-width%3D%221.5%22%20stroke-linejoin%3D%22round%22/%3E%3Cline%20x1%3D%2215%22%20y1%3D%2232%22%20x2%3D%2229%22%20y2%3D%2232%22%20stroke%3D%22%23666%22%20stroke-width%3D%221%22%20stroke-linecap%3D%22round%22/%3E%3C/svg%3E",
+  wQ: "data:image/svg+xml;charset=utf-8,%3Csvg%20xmlns%3D%22http%3A//www.w3.org/2000/svg%22%20viewBox%3D%220%200%2045%2045%22%3E%3Ccircle%20cx%3D%226%22%20cy%3D%2212%22%20r%3D%223%22%20fill%3D%22%23fff%22%20stroke%3D%22%23000%22%20stroke-width%3D%221.5%22/%3E%3Ccircle%20cx%3D%2214%22%20cy%3D%228%22%20r%3D%223%22%20fill%3D%22%23fff%22%20stroke%3D%22%23000%22%20stroke-width%3D%221.5%22/%3E%3Ccircle%20cx%3D%2222.5%22%20cy%3D%227%22%20r%3D%223%22%20fill%3D%22%23fff%22%20stroke%3D%22%23000%22%20stroke-width%3D%221.5%22/%3E%3Ccircle%20cx%3D%2231%22%20cy%3D%228%22%20r%3D%223%22%20fill%3D%22%23fff%22%20stroke%3D%22%23000%22%20stroke-width%3D%221.5%22/%3E%3Ccircle%20cx%3D%2239%22%20cy%3D%2212%22%20r%3D%223%22%20fill%3D%22%23fff%22%20stroke%3D%22%23000%22%20stroke-width%3D%221.5%22/%3E%3Cpath%20d%3D%22M%206%2C12%20L%2012%2C30%20L%2033%2C30%20L%2039%2C12%20L%2031%2C22%20L%2022.5%2C10%20L%2014%2C22%20Z%22%20fill%3D%22%23fff%22%20stroke%3D%22%23000%22%20stroke-width%3D%221.5%22%20stroke-linejoin%3D%22round%22%20stroke-linecap%3D%22round%22/%3E%3Cpath%20d%3D%22M%2011%2C30%20L%2011%2C36%20L%2034%2C36%20L%2034%2C30%20Z%22%20fill%3D%22%23fff%22%20stroke%3D%22%23000%22%20stroke-width%3D%221.5%22%20stroke-linejoin%3D%22round%22/%3E%3Cpath%20d%3D%22M%209%2C36%20L%2036%2C36%20L%2036%2C39%20L%209%2C39%20Z%22%20fill%3D%22%23fff%22%20stroke%3D%22%23000%22%20stroke-width%3D%221.5%22%20stroke-linejoin%3D%22round%22/%3E%3Cline%20x1%3D%2212%22%20y1%3D%2233%22%20x2%3D%2233%22%20y2%3D%2233%22%20stroke%3D%22%23000%22%20stroke-width%3D%221%22%20stroke-linecap%3D%22round%22/%3E%3C/svg%3E",
+  bQ: "data:image/svg+xml;charset=utf-8,%3Csvg%20xmlns%3D%22http%3A//www.w3.org/2000/svg%22%20viewBox%3D%220%200%2045%2045%22%3E%3Ccircle%20cx%3D%226%22%20cy%3D%2212%22%20r%3D%223%22%20fill%3D%22%23222%22%20stroke%3D%22%23000%22%20stroke-width%3D%221.5%22/%3E%3Ccircle%20cx%3D%2214%22%20cy%3D%228%22%20r%3D%223%22%20fill%3D%22%23222%22%20stroke%3D%22%23000%22%20stroke-width%3D%221.5%22/%3E%3Ccircle%20cx%3D%2222.5%22%20cy%3D%227%22%20r%3D%223%22%20fill%3D%22%23222%22%20stroke%3D%22%23000%22%20stroke-width%3D%221.5%22/%3E%3Ccircle%20cx%3D%2231%22%20cy%3D%228%22%20r%3D%223%22%20fill%3D%22%23222%22%20stroke%3D%22%23000%22%20stroke-width%3D%221.5%22/%3E%3Ccircle%20cx%3D%2239%22%20cy%3D%2212%22%20r%3D%223%22%20fill%3D%22%23222%22%20stroke%3D%22%23000%22%20stroke-width%3D%221.5%22/%3E%3Cpath%20d%3D%22M%206%2C12%20L%2012%2C30%20L%2033%2C30%20L%2039%2C12%20L%2031%2C22%20L%2022.5%2C10%20L%2014%2C22%20Z%22%20fill%3D%22%23222%22%20stroke%3D%22%23000%22%20stroke-width%3D%221.5%22%20stroke-linejoin%3D%22round%22%20stroke-linecap%3D%22round%22/%3E%3Cpath%20d%3D%22M%2011%2C30%20L%2011%2C36%20L%2034%2C36%20L%2034%2C30%20Z%22%20fill%3D%22%23222%22%20stroke%3D%22%23000%22%20stroke-width%3D%221.5%22%20stroke-linejoin%3D%22round%22/%3E%3Cpath%20d%3D%22M%209%2C36%20L%2036%2C36%20L%2036%2C39%20L%209%2C39%20Z%22%20fill%3D%22%23222%22%20stroke%3D%22%23000%22%20stroke-width%3D%221.5%22%20stroke-linejoin%3D%22round%22/%3E%3Cline%20x1%3D%2212%22%20y1%3D%2233%22%20x2%3D%2233%22%20y2%3D%2233%22%20stroke%3D%22%23666%22%20stroke-width%3D%221%22%20stroke-linecap%3D%22round%22/%3E%3C/svg%3E",
+  wK: "data:image/svg+xml;charset=utf-8,%3Csvg%20xmlns%3D%22http%3A//www.w3.org/2000/svg%22%20viewBox%3D%220%200%2045%2045%22%3E%3Cline%20x1%3D%2222.5%22%20y1%3D%225%22%20x2%3D%2222.5%22%20y2%3D%2213%22%20stroke%3D%22%23000%22%20stroke-width%3D%223%22%20stroke-linecap%3D%22round%22/%3E%3Cline%20x1%3D%2218%22%20y1%3D%229%22%20x2%3D%2227%22%20y2%3D%229%22%20stroke%3D%22%23000%22%20stroke-width%3D%223%22%20stroke-linecap%3D%22round%22/%3E%3Cpath%20d%3D%22M%2012%2C30%20C%2010%2C26%2010%2C20%2012%2C16%20Q%2017%2C12%2022.5%2C12%20Q%2028%2C12%2033%2C16%20C%2035%2C20%2035%2C26%2033%2C30%20Z%22%20fill%3D%22%23fff%22%20stroke%3D%22%23000%22%20stroke-width%3D%221.5%22%20stroke-linejoin%3D%22round%22/%3E%3Cpath%20d%3D%22M%2011%2C30%20L%2011%2C36%20L%2034%2C36%20L%2034%2C30%20Z%22%20fill%3D%22%23fff%22%20stroke%3D%22%23000%22%20stroke-width%3D%221.5%22%20stroke-linejoin%3D%22round%22/%3E%3Cpath%20d%3D%22M%209%2C36%20L%2036%2C36%20L%2036%2C39%20L%209%2C39%20Z%22%20fill%3D%22%23fff%22%20stroke%3D%22%23000%22%20stroke-width%3D%221.5%22%20stroke-linejoin%3D%22round%22/%3E%3Cline%20x1%3D%2212%22%20y1%3D%2233%22%20x2%3D%2233%22%20y2%3D%2233%22%20stroke%3D%22%23000%22%20stroke-width%3D%221%22%20stroke-linecap%3D%22round%22/%3E%3Cpath%20d%3D%22M%2014%2C28%20Q%2022.5%2C22%2031%2C28%22%20fill%3D%22none%22%20stroke%3D%22%23000%22%20stroke-width%3D%221.2%22%20stroke-linecap%3D%22round%22/%3E%3C/svg%3E",
+  bK: "data:image/svg+xml;charset=utf-8,%3Csvg%20xmlns%3D%22http%3A//www.w3.org/2000/svg%22%20viewBox%3D%220%200%2045%2045%22%3E%3Cline%20x1%3D%2222.5%22%20y1%3D%225%22%20x2%3D%2222.5%22%20y2%3D%2213%22%20stroke%3D%22%23fff%22%20stroke-width%3D%223%22%20stroke-linecap%3D%22round%22/%3E%3Cline%20x1%3D%2218%22%20y1%3D%229%22%20x2%3D%2227%22%20y2%3D%229%22%20stroke%3D%22%23fff%22%20stroke-width%3D%223%22%20stroke-linecap%3D%22round%22/%3E%3Cpath%20d%3D%22M%2012%2C30%20C%2010%2C26%2010%2C20%2012%2C16%20Q%2017%2C12%2022.5%2C12%20Q%2028%2C12%2033%2C16%20C%2035%2C20%2035%2C26%2033%2C30%20Z%22%20fill%3D%22%23222%22%20stroke%3D%22%23000%22%20stroke-width%3D%221.5%22%20stroke-linejoin%3D%22round%22/%3E%3Cpath%20d%3D%22M%2011%2C30%20L%2011%2C36%20L%2034%2C36%20L%2034%2C30%20Z%22%20fill%3D%22%23222%22%20stroke%3D%22%23000%22%20stroke-width%3D%221.5%22%20stroke-linejoin%3D%22round%22/%3E%3Cpath%20d%3D%22M%209%2C36%20L%2036%2C36%20L%2036%2C39%20L%209%2C39%20Z%22%20fill%3D%22%23222%22%20stroke%3D%22%23000%22%20stroke-width%3D%221.5%22%20stroke-linejoin%3D%22round%22/%3E%3Cline%20x1%3D%2212%22%20y1%3D%2233%22%20x2%3D%2233%22%20y2%3D%2233%22%20stroke%3D%22%23666%22%20stroke-width%3D%221%22%20stroke-linecap%3D%22round%22/%3E%3Cpath%20d%3D%22M%2014%2C28%20Q%2022.5%2C22%2031%2C28%22%20fill%3D%22none%22%20stroke%3D%22%23aaa%22%20stroke-width%3D%221.2%22%20stroke-linecap%3D%22round%22/%3E%3C/svg%3E",
+};
+const PIECE_VAL = { P:1, N:3, B:3, R:5, Q:9, K:0 };
+
+function startFEN() {
+  return 'rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1';
+}
+
+function parseFEN(fen) {
+  const [pos, turn, cast, ep] = fen.split(' ');
+  const board = Array(64).fill(null);
+  let r = 0, f = 0;
+  for (const ch of pos) {
+    if (ch === '/') { r++; f = 0; }
+    else if ('12345678'.includes(ch)) f += +ch;
+    else {
+      const col = ch === ch.toUpperCase() ? 'w' : 'b';
+      board[r*8+f] = col + ch.toUpperCase();
+      f++;
+    }
+  }
+  return { board, turn, castling: cast, ep: ep === '-' ? null : ep };
+}
+
+function squareIndex(sq) { return (8 - +sq[1]) * 8 + FILES.indexOf(sq[0]); }
+function indexToSq(i) { return FILES[i%8] + (8 - Math.floor(i/8)); }
+
+// Generate pseudo-legal moves for a piece at idx
+function pieceMoves(state, idx) {
+  const { board, turn, castling, ep } = state;
+  const piece = board[idx];
+  if (!piece || piece[0] !== turn) return [];
+  const [col, type] = [piece[0], piece[1]];
+  const opp = col === 'w' ? 'b' : 'w';
+  const moves = [];
+
+  function add(to, special) {
+    if (to < 0 || to > 63) return false;
+    const target = board[to];
+    if (target && target[0] === col) return false;
+    moves.push({ from: idx, to, special });
+    return !target; // returns true if empty (for sliding)
+  }
+
+  function slide(dirs) {
+    for (const [dr, df] of dirs) {
+      let r = Math.floor(idx/8) + dr, f = idx%8 + df;
+      while (r >= 0 && r < 8 && f >= 0 && f < 8) {
+        const to = r*8+f;
+        const target = board[to];
+        if (target) { if (target[0] === opp) moves.push({ from:idx, to }); break; }
+        moves.push({ from:idx, to });
+        r += dr; f += df;
+      }
+    }
+  }
+
+  const r0 = Math.floor(idx/8), f0 = idx%8;
+
+  if (type === 'P') {
+    const dir = col === 'w' ? -1 : 1;
+    const startRow = col === 'w' ? 6 : 1;
+    const promRow  = col === 'w' ? 0 : 7;
+    const fwd = idx + dir*8;
+    if (fwd >= 0 && fwd < 64 && !board[fwd]) {
+      const special = Math.floor(fwd/8) === promRow ? 'promo' : undefined;
+      moves.push({ from:idx, to:fwd, special });
+      const fwd2 = fwd + dir*8;
+      if (r0 === startRow && !board[fwd2]) moves.push({ from:idx, to:fwd2, special:'double' });
+    }
+    for (const df of [-1, 1]) {
+      const tf = f0+df, to = fwd + df - (fwd%8 - f0);
+      const tRow = Math.floor(idx/8)+dir, tFile = f0+df;
+      if (tFile < 0 || tFile > 7) continue;
+      const to2 = tRow*8+tFile;
+      if (board[to2] && board[to2][0] === opp) {
+        const special2 = Math.floor(to2/8) === promRow ? 'promo' : undefined;
+        moves.push({ from:idx, to:to2, special:special2 });
+      } else if (ep && indexToSq(to2) === ep) {
+        moves.push({ from:idx, to:to2, special:'ep' });
+      }
+    }
+  } else if (type === 'N') {
+    for (const [dr, df] of [[-2,-1],[-2,1],[-1,-2],[-1,2],[1,-2],[1,2],[2,-1],[2,1]]) {
+      const nr=r0+dr, nf=f0+df;
+      if (nr>=0&&nr<8&&nf>=0&&nf<8) add(nr*8+nf);
+    }
+  } else if (type === 'B') {
+    slide([[-1,-1],[-1,1],[1,-1],[1,1]]);
+  } else if (type === 'R') {
+    slide([[-1,0],[1,0],[0,-1],[0,1]]);
+  } else if (type === 'Q') {
+    slide([[-1,-1],[-1,1],[1,-1],[1,1],[-1,0],[1,0],[0,-1],[0,1]]);
+  } else if (type === 'K') {
+    for (const [dr,df] of [[-1,-1],[-1,0],[-1,1],[0,-1],[0,1],[1,-1],[1,0],[1,1]]) {
+      const nr=r0+dr,nf=f0+df;
+      if(nr>=0&&nr<8&&nf>=0&&nf<8) add(nr*8+nf);
+    }
+    // Castling
+    if (col === 'w') {
+      if (castling.includes('K') && !board[61]&&!board[62]) moves.push({from:60,to:62,special:'castle-k'});
+      if (castling.includes('Q') && !board[59]&&!board[58]&&!board[57]) moves.push({from:60,to:58,special:'castle-q'});
+    } else {
+      if (castling.includes('k') && !board[5]&&!board[6]) moves.push({from:4,to:6,special:'castle-k'});
+      if (castling.includes('q') && !board[3]&&!board[2]&&!board[1]) moves.push({from:4,to:2,special:'castle-q'});
+    }
+  }
+  return moves;
+}
+
+function kingIdx(board, col) { return board.findIndex(p => p === col+'K'); }
+
+function isAttacked(board, idx, byCol) {
+  // Check if idx is attacked by byCol
+  const tmpState = { board, turn: byCol, castling: '-', ep: null };
+  for (let i = 0; i < 64; i++) {
+    if (board[i] && board[i][0] === byCol) {
+      const ms = pieceMoves({ ...tmpState }, i);
+      if (ms.some(m => m.to === idx)) return true;
+    }
+  }
+  return false;
+}
+
+function applyMove(state, move, promoChoice) {
+  const board = [...state.board];
+  const { from, to, special } = move;
+  const piece = board[from];
+  const [col, type] = [piece[0], piece[1]];
+  let castling = state.castling;
+  let ep = null;
+
+  board[to] = piece;
+  board[from] = null;
+
+  if (special === 'ep') board[to + (col==='w'?8:-8)] = null;
+  if (special === 'promo') board[to] = col + (promoChoice || 'Q');
+  if (special === 'double') ep = indexToSq(to + (col==='w'?8:-8));
+
+  if (special === 'castle-k') {
+    const rookFrom = col==='w'?63:7, rookTo = col==='w'?61:5;
+    board[rookTo] = board[rookFrom]; board[rookFrom] = null;
+  }
+  if (special === 'castle-q') {
+    const rookFrom = col==='w'?56:0, rookTo = col==='w'?59:3;
+    board[rookTo] = board[rookFrom]; board[rookFrom] = null;
+  }
+
+  // Update castling rights
+  if (type==='K') castling = castling.replace(col==='w'?/[KQ]/g:/[kq]/g,'');
+  if (from===63||to===63) castling=castling.replace('K','');
+  if (from===56||to===56) castling=castling.replace('Q','');
+  if (from===7||to===7)   castling=castling.replace('k','');
+  if (from===0||to===0)   castling=castling.replace('q','');
+  if (!castling) castling = '-';
+
+  return { board, turn: col==='w'?'b':'w', castling, ep };
+}
+
+function legalMoves(state, idx) {
+  const col = state.board[idx]?.[0];
+  if (!col) return [];
+  const opp = col==='w'?'b':'w';
+  return pieceMoves(state, idx).filter(m => {
+    const next = applyMove(state, m);
+    return !isAttacked(next.board, kingIdx(next.board, col), opp);
+  });
+}
+
+function allLegalMoves(state) {
+  const moves = [];
+  for (let i=0;i<64;i++) {
+    if (state.board[i]&&state.board[i][0]===state.turn) {
+      moves.push(...legalMoves(state, i));
+    }
+  }
+  return moves;
+}
+
+// ─────────────────────────────────────────────
+// PGN Parser (simplified)
+// ─────────────────────────────────────────────
+
+function parsePGN(pgn) {
+  // Strip comments and annotations
+  pgn = pgn.replace(/\{[^}]*\}/g,'').replace(/\([^)]*\)/g,'').replace(/\$\d+/g,'');
+  // Remove headers
+  pgn = pgn.replace(/\[[^\]]*\]/g,'').trim();
+  // Tokenise
+  const tokens = pgn.split(/\s+/).filter(t => t && !/^\d+\.+$/.test(t) && !['1-0','0-1','1/2-1/2','*'].includes(t));
+  return tokens;
+}
+
+function sanToMove(state, san) {
+  // Strip check/mate markers
+  san = san.replace(/[+#!?]/g,'');
+
+  // Castling
+  if (san === 'O-O' || san === '0-0') {
+    const m = allLegalMoves(state).find(m => m.special==='castle-k');
+    return m || null;
+  }
+  if (san === 'O-O-O' || san === '0-0-0') {
+    const m = allLegalMoves(state).find(m => m.special==='castle-q');
+    return m || null;
+  }
+
+  const col = state.turn;
+
+  // Parse: [piece][file?][rank?][x?][dest][promo?]
+  let s = san.replace('x','');
+  let promo = null;
+  if (s.includes('=')) { promo = s.split('=')[1][0]; s = s.split('=')[0]; }
+
+  let pieceType = 'P';
+  if ('KQRBN'.includes(s[0])) { pieceType = s[0]; s = s.slice(1); }
+
+  const dest = s.slice(-2);
+  const disamb = s.slice(0, -2);
+
+  const toIdx = squareIndex(dest);
+  const candidates = allLegalMoves(state).filter(m => {
+    if (m.to !== toIdx) return false;
+    const p = state.board[m.from];
+    if (!p || p[0]!==col || p[1]!==pieceType) return false;
+    if (disamb.length === 1) {
+      if ('abcdefgh'.includes(disamb)) {
+        if (FILES[m.from%8] !== disamb) return false;
+      } else {
+        if ((8 - Math.floor(m.from/8)).toString() !== disamb) return false;
+      }
+    } else if (disamb.length === 2) {
+      if (indexToSq(m.from) !== disamb) return false;
+    }
+    return true;
+  });
+
+  return candidates[0] || null;
+}
+
+// ─────────────────────────────────────────────
+// App State
+// ─────────────────────────────────────────────
+
+let history = []; // array of states
+let pgnMoves = []; // san strings
+let currentIdx = 0;
+let selected = null;
+let validMoves = [];
+let dragFrom = null;
+let dragGhost = document.getElementById('drag-ghost');
+
+function currentState() { return history[currentIdx]; }
+
+function initHistory(state) {
+  history = [state];
+  currentIdx = 0;
+  pgnMoves = [];
+}
+
+resetBoard();
+
+function resetBoard() {
+  const state = parseFEN(startFEN());
+  initHistory(state);
+  selected = null;
+  validMoves = [];
+  renderAll();
+  setStatus('Ready — load a PGN or move pieces freely.', '');
+}
+
+// ─────────────────────────────────────────────
+// Render
+// ─────────────────────────────────────────────
+
+function renderAll() {
+  renderBoard();
+  renderMoveList();
+  renderCaptured();
+}
+
+function renderBoard() {
+  const board = document.getElementById('board');
+  board.innerHTML = '';
+
+  const coordsRank = document.getElementById('coords-rank');
+  coordsRank.innerHTML = '';
+  for (let r=0;r<8;r++) { const s=document.createElement('span');s.textContent=8-r;coordsRank.appendChild(s); }
+
+  const coordsFile = document.getElementById('coords-file');
+  coordsFile.innerHTML = '';
+  for (let f=0;f<8;f++) { const s=document.createElement('span');s.textContent=FILES[f];coordsFile.appendChild(s); }
+
+  const state = currentState();
+  const lastMove = currentIdx > 0 ? getLastMove() : null;
+
+  for (let i=0;i<64;i++) {
+    const sq = document.createElement('div');
+    const r = Math.floor(i/8), f = i%8;
+    sq.className = 'sq ' + ((r+f)%2===0?'light':'dark');
+    sq.dataset.idx = i;
+
+    if (selected === i) sq.classList.add('selected');
+    if (lastMove && (lastMove.from===i||lastMove.to===i)) sq.classList.add('last-move');
+
+    const vm = validMoves.find(m=>m.to===i);
+    if (vm) sq.classList.add(state.board[i]?'valid-capture':'valid-move');
+
+    const piece = state.board[i];
+    if (piece) {
+      const span = document.createElement('span');
+      span.className = 'piece' + (piece[0] === 'b' ? ' black' : '');
+      span.textContent = UNICODE[piece];
+      span.draggable = true;
+      span.dataset.idx = i;
+      span.addEventListener('dragstart', e => onDragStart(e, i));
+      span.addEventListener('dragend', onDragEnd);
+      sq.appendChild(span);
+    }
+
+    sq.addEventListener('click', () => onSquareClick(i));
+    sq.addEventListener('dragover', e => { e.preventDefault(); });
+    sq.addEventListener('drop', e => onDrop(e, i));
+
+    board.appendChild(sq);
+  }
+}
+
+// Animate a piece flying from one square to another using rAF lerp
+function animatePieceMove(fromIdx, toIdx, pieceCode) {
+  const SQ = 90;
+  const boardEl = document.getElementById('board');
+  const boardRect = boardEl.getBoundingClientRect();
+
+  function sqCenter(idx) {
+    const f = idx % 8, r = Math.floor(idx / 8);
+    return {
+      x: boardRect.left + f * SQ + SQ / 2,
+      y: boardRect.top  + r * SQ + SQ / 2
+    };
+  }
+
+  const from = sqCenter(fromIdx);
+  const to   = sqCenter(toIdx);
+
+  // Distance-proportional duration: 1 square = 80ms, max 260ms
+  const dist = Math.hypot(to.x - from.x, to.y - from.y);
+  const duration = Math.min(2000, Math.max(800, dist * 2.8));
+
+  const fly = document.getElementById('fly-piece');
+  const piece = pieceCode;
+  fly.textContent = UNICODE[piece];
+  fly.className = piece[0] === 'b' ? 'black' : '';
+  fly.style.left = from.x + 'px';
+  fly.style.top  = from.y + 'px';
+  fly.style.display = 'block';
+
+  const start = performance.now();
+
+  function frame(now) {
+    const t = Math.min(1, (now - start) / duration);
+    // ease in-out
+    const e = t < 0.5 ? 2*t*t : -1+(4-2*t)*t;
+    fly.style.left = (from.x + (to.x - from.x) * e) + 'px';
+    fly.style.top  = (from.y + (to.y - from.y) * e) + 'px';
+    if (t < 1) {
+      requestAnimationFrame(frame);
+    } else {
+      fly.style.display = 'none';
+    }
+  }
+  requestAnimationFrame(frame);
+}
+
+function getLastMove() {
+  if (currentIdx === 0) return null;
+  // We stored moves in history alongside states
+  return history[currentIdx]._move || null;
+}
+
+function renderMoveList() {
+  const list = document.getElementById('move-list');
+  if (!pgnMoves.length) { list.innerHTML = '<div style="padding:8px;color:var(--muted);font-size:0.7rem">No game loaded.</div>'; return; }
+
+  const table = document.createElement('table');
+  table.className = 'move-table';
+
+  // Header
+  const thead = document.createElement('thead');
+  thead.innerHTML = `<tr>
+    <td class="td-num"></td>
+    <td class="td-move" style="color:var(--muted);font-size:0.6rem;letter-spacing:0.1em;padding:6px 8px 4px">WHITE</td>
+    <td class="td-move" style="color:var(--muted);font-size:0.6rem;letter-spacing:0.1em;padding:6px 8px 4px">BLACK</td>
+  </tr>`;
+  table.appendChild(thead);
+
+  const tbody = document.createElement('tbody');
+
+  for (let i = 0; i < pgnMoves.length; i += 2) {
+    const tr = document.createElement('tr');
+    const moveNum = i / 2 + 1;
+
+    // Number cell
+    const tdNum = document.createElement('td');
+    tdNum.className = 'td-num';
+    tdNum.textContent = moveNum + '.';
+    tr.appendChild(tdNum);
+
+    // White move
+    const tdW = document.createElement('td');
+    tdW.className = 'td-move';
+    const mvW = document.createElement('span');
+    mvW.className = 'mv' + (currentIdx === i + 1 ? ' active' : '');
+    mvW.textContent = pgnMoves[i];
+    mvW.addEventListener('click', () => goTo(i + 1));
+    tdW.appendChild(mvW);
+    tr.appendChild(tdW);
+
+    // Black move
+    const tdB = document.createElement('td');
+    tdB.className = 'td-move';
+    if (i + 1 < pgnMoves.length) {
+      const mvB = document.createElement('span');
+      mvB.className = 'mv' + (currentIdx === i + 2 ? ' active' : '');
+      mvB.textContent = pgnMoves[i + 1];
+      mvB.addEventListener('click', () => goTo(i + 2));
+      tdB.appendChild(mvB);
+    }
+    tr.appendChild(tdB);
+
+    tbody.appendChild(tr);
+  }
+
+  table.appendChild(tbody);
+  list.innerHTML = '';
+  list.appendChild(table);
+
+  // Scroll active into view
+  const active = list.querySelector('.mv.active');
+  if (active) active.scrollIntoView({ block: 'nearest' });
+}
+
+function renderCaptured() {
+  const captured = { w: [], b: [] };
+  const board = currentState().board;
+  const initial = {w:{P:8,N:2,B:2,R:2,Q:1},b:{P:8,N:2,B:2,R:2,Q:1}};
+  const counts = {w:{P:0,N:0,B:0,R:0,Q:0,K:0},b:{P:0,N:0,B:0,R:0,Q:0,K:0}};
+  board.forEach(p => { if(p&&p[1]!=='K') counts[p[0]][p[1]]++; });
+  for (const col of ['w','b']) {
+    for (const type of ['Q','R','B','N','P']) {
+      const lost = initial[col][type] - counts[col][type];
+      for (let i=0;i<lost;i++) captured[col==='w'?'b':'w'].push(col+type);
+    }
+  }
+  for (const [elId, pieces] of [['cap-black', captured.b], ['cap-white', captured.w]]) {
+    const el = document.getElementById(elId);
+    el.innerHTML = '';
+    pieces.forEach(p => {
+      const img = document.createElement('img');
+      img.src = PIECE_SVG[p];
+      img.style.cssText = 'width:20px;height:20px;filter:drop-shadow(0 1px 2px rgba(0,0,0,0.4))';
+      el.appendChild(img);
+    });
+  }
+}
+
+// ─────────────────────────────────────────────
+// Interaction
+// ─────────────────────────────────────────────
+
+function onSquareClick(idx) {
+  const state = currentState();
+  const piece = state.board[idx];
+
+  if (selected !== null) {
+    const move = validMoves.find(m => m.to === idx);
+    if (move) {
+      executeMove(move);
+      return;
+    }
+    if (piece && piece[0] === state.turn) {
+      selected = idx;
+      validMoves = legalMoves(state, idx);
+      renderBoard();
+      return;
+    }
+    selected = null;
+    validMoves = [];
+    renderBoard();
+    return;
+  }
+
+  if (piece && piece[0] === state.turn) {
+    selected = idx;
+    validMoves = legalMoves(state, idx);
+    renderBoard();
+  }
+}
+
+let dragFromIdx = null;
+
+function onDragStart(e, idx) {
+  dragFromIdx = idx;
+  const state = currentState();
+  if (state.board[idx]?.[0] !== state.turn) { e.preventDefault(); return; }
+  selected = idx;
+  validMoves = legalMoves(state, idx);
+
+  // Custom ghost
+  dragGhost.textContent = UNICODE[state.board[idx]];
+  dragGhost.style.color = state.board[idx][0] === 'b' ? '#111' : '#fff';
+  dragGhost.style.webkitTextStroke = state.board[idx][0] === 'b' ? '1px #000' : '1.5px #555';
+  dragGhost.style.display = 'block';
+  document.addEventListener('mousemove', moveDragGhost);
+
+  // Hide default ghost
+  const blank = document.createElement('canvas');
+  e.dataTransfer.setDragImage(blank, 0, 0);
+
+  setTimeout(() => {
+    const pieceEl = document.querySelector(`.piece[data-idx="${idx}"]`);
+    if (pieceEl) pieceEl.classList.add('dragging');
+    renderBoard();
+  }, 0);
+}
+
+function moveDragGhost(e) {
+  dragGhost.style.left = e.clientX + 'px';
+  dragGhost.style.top  = e.clientY + 'px';
+}
+
+function onDragEnd() {
+  dragGhost.style.display = 'none';
+  document.removeEventListener('mousemove', moveDragGhost);
+  dragFromIdx = null;
+}
+
+function onDrop(e, toIdx) {
+  e.preventDefault();
+  if (dragFromIdx === null) return;
+  const move = legalMoves(currentState(), dragFromIdx).find(m => m.to === toIdx);
+  if (move) executeMove(move);
+  else { selected = null; validMoves = []; renderBoard(); }
+}
+
+function executeMove(move, promoChoice) {
+  if (move.special === 'promo' && !promoChoice) {
+    // Show picker, then re-call with choice
+    showPromoPicker(currentState().turn, choice => executeMove(move, choice));
+    return;
+  }
+
+  // Truncate future if we branched
+  history = history.slice(0, currentIdx + 1);
+  pgnMoves = pgnMoves.slice(0, currentIdx);
+
+  const newState = applyMove(currentState(), move, promoChoice);
+  newState._move = { ...move, promoChoice };
+  history.push(newState);
+  currentIdx++;
+
+  pgnMoves.push(moveToLabel(history[currentIdx-1], move, promoChoice));
+
+  selected = null;
+  validMoves = [];
+  const _mv = history[currentIdx]._move;
+  const _piece = currentState().board[_mv.to];
+  renderAll();
+  if (_mv) animatePieceMove(_mv.from, _mv.to, _piece || 'wP');
+  checkGameEnd();
+}
+
+function showPromoPicker(col, callback) {
+  const modal = document.getElementById('promo-modal');
+  const choices = document.getElementById('promo-choices');
+  choices.innerHTML = '';
+  const pieces = ['Q','R','B','N'];
+  const glyphs = { Q:'♛', R:'♜', B:'♝', N:'♞' };
+  pieces.forEach(type => {
+    const btn = document.createElement('button');
+    btn.className = 'promo-btn' + (col === 'b' ? ' black-piece' : '');
+    btn.textContent = glyphs[type];
+    btn.title = { Q:'Queen', R:'Rook', B:'Bishop', N:'Knight' }[type];
+    btn.onclick = () => {
+      modal.classList.remove('show');
+      callback(type);
+    };
+    choices.appendChild(btn);
+  });
+  modal.classList.add('show');
+}
+
+function moveToLabel(prevState, move, promoChoice) {
+  const piece = prevState.board[move.from];
+  const type = piece[1];
+  const capture = prevState.board[move.to] || move.special==='ep';
+  const dest = indexToSq(move.to);
+  let label = '';
+  if (move.special==='castle-k') return 'O-O';
+  if (move.special==='castle-q') return 'O-O-O';
+  if (type!=='P') label += type;
+  if (type==='P'&&capture) label += FILES[move.from%8];
+  if (capture) label += 'x';
+  label += dest;
+  if (move.special==='promo') label += '=' + (promoChoice || 'Q');
+  return label;
+}
+
+function checkGameEnd() {
+  const state = currentState();
+  const moves = allLegalMoves(state);
+  const col = state.turn;
+  const opp = col==='w'?'b':'w';
+  const inCheck = isAttacked(state.board, kingIdx(state.board, col), opp);
+  if (!moves.length) {
+    setStatus(inCheck ? (opp==='w'?'White':'Black')+' wins by checkmate!' : 'Stalemate — draw!', 'ok');
+  } else if (inCheck) {
+    setStatus((col==='w'?'White':'Black')+' is in check!', '');
+  } else {
+    setStatus((col==='w'?'White':'Black')+" to move.", '');
+  }
+}
+
+// ─────────────────────────────────────────────
+// Navigation
+// ─────────────────────────────────────────────
+
+function goTo(targetIdx) {
+  const prevIdx = currentIdx;
+  currentIdx = Math.max(0, Math.min(targetIdx, history.length-1));
+  selected = null; validMoves = [];
+
+  // Animate if stepping one move forward or backward
+  const move = history[currentIdx]._move;
+  const stepping = Math.abs(currentIdx - prevIdx) === 1 && move;
+  if (stepping) {
+    const going_forward = currentIdx > prevIdx;
+    const fromSq = going_forward ? move.from : move.to;
+    const toSq   = going_forward ? move.to   : move.from;
+    const piece  = currentState().board[going_forward ? toSq : fromSq]
+                   || history[prevIdx].board[going_forward ? move.from : move.to];
+    renderAll();
+    animatePieceMove(fromSq, toSq, piece || 'wP');
+  } else {
+    renderAll();
+  }
+  checkGameEnd();
+}
+function stepBack() { goTo(currentIdx-1); }
+function stepForward() { goTo(currentIdx+1); }
+
+// Keyboard navigation
+document.addEventListener('keydown', e => {
+  if (e.key==='ArrowLeft') stepBack();
+  if (e.key==='ArrowRight') stepForward();
+  if (e.key==='ArrowUp') goTo(0);
+  if (e.key==='ArrowDown') goTo(history.length-1);
+});
+
+// ─────────────────────────────────────────────
+// PGN Loading
+// ─────────────────────────────────────────────
+
+function loadPGN() {
+  const pgn = document.getElementById('pgn-input').value.trim();
+  if (!pgn) { setStatus('Please paste a PGN first.', 'error'); return; }
+
+  try {
+    const tokens = parsePGN(pgn);
+    let state = parseFEN(startFEN());
+    const states = [state];
+    const sans = [];
+
+    for (const token of tokens) {
+      const move = sanToMove(state, token);
+      if (!move) throw new Error('Could not parse move: ' + token);
+      const promoMatch = token.match(/=([QRBN])/);
+      const promo = promoMatch ? promoMatch[1] : null;
+      const next = applyMove(state, move, promo);
+      next._move = move;
+      states.push(next);
+      sans.push(token.replace(/[+#]/g,''));
+      state = next;
+    }
+
+    history = states;
+    pgnMoves = sans;
+    currentIdx = states.length - 1;
+    selected = null; validMoves = [];
+    renderAll();
+    setStatus(`Loaded ${tokens.length} moves. Use ◀▶ or click moves to navigate.`, 'ok');
+  } catch(err) {
+    setStatus('Error: ' + err.message, 'error');
+  }
+}
+
+function loadExample() {
+  // Immortal Game 1851: Anderssen vs Kieseritzky
+  const pgn = `[Event "London"]
+[White "Anderssen, A"]
+[Black "Kieseritzky, L"]
+[Result "1-0"]
+
+1. e4 e5 2. f4 exf4 3. Bc4 Qh4+ 4. Kf1 b5 5. Bxb5 Nf6 6. Nf3 Qh6 7. d3 Nh5
+8. Nh4 Qg5 9. Nf5 c6 10. g4 Nf6 11. Rg1 cxb5 12. h4 Qg6 13. h5 Qg5
+14. Qf3 Ng8 15. Bxf4 Qf6 16. Nc3 Bc5 17. Nd5 Qxb2 18. Bd6 Bxg1
+19. e5 Qxa1+ 20. Ke2 Na6 21. Nxg7+ Kd8 22. Qf6+ Nxf6 23. Be7# 1-0`;
+  document.getElementById('pgn-input').value = pgn;
+  loadPGN();
+}
+
+function setStatus(msg, cls) {
+  const el = document.getElementById('status');
+  el.textContent = msg;
+  el.className = 'status' + (cls?' '+cls:'');
+}
+
+renderAll();
+setStatus('White to move.', '');
+</script>
+
+<div id="promo-modal">
+  <div class="promo-box">
+    <h3>Promote to</h3>
+    <div class="promo-choices" id="promo-choices"></div>
+  </div>
+</div>
+</body>
+</html>
