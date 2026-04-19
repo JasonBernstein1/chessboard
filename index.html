@@ -1244,7 +1244,17 @@ let libFilter = null;     // collection name to filter by, or null = all
 function loadStoredCollections() {
   try {
     const raw = localStorage.getItem('gameCollections');
-    if (raw) gameCollections = JSON.parse(raw);
+    if (raw) {
+      const stored = JSON.parse(raw);
+      // Migrate any keys that have path prefixes (e.g. "pgn/Fischer.pgn" → "Fischer.pgn")
+      for (const [key, val] of Object.entries(stored)) {
+        const basename = key.split('/').pop();
+        if (basename !== key) { delete stored[key]; stored[basename] = val; }
+        if (val.name) val.name = val.name.split('/').pop().replace(/\.pgn$/i, '');
+        if (val.games) val.games.forEach(g => { if (g.collection) g.collection = g.collection.split('/').pop().replace(/\.pgn$/i, ''); });
+      }
+      gameCollections = stored;
+    }
   } catch(e) { gameCollections = {}; }
 }
 

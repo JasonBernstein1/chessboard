@@ -25,7 +25,8 @@ pgn_file = sys.argv[1]
 pgn = open(pgn_file, encoding='utf-8').read().replace('`', r'\`')
 js = open('collections.js', encoding='utf-8').read().rstrip()
 js = re.sub(r'\]\s*;?\s*$', '', js)
-js += f',\n  {{ filename: "{pgn_file}", pgn: `{pgn}` }}\n];\n'
+basename = pgn_file.split('/')[-1]
+js += f',\n  {{ filename: "{basename}", pgn: `{pgn}` }}\n];\n'
 open('collections.js', 'w', encoding='utf-8').write(js)
 count = pgn.count('[Event ')
 print(f"Added {count} games from {pgn_file}")
