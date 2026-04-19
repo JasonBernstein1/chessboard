@@ -319,6 +319,83 @@
     transition: border-color 0.15s, background 0.15s;
   }
   .promo-btn:hover { border-color: var(--accent); background: rgba(129,182,76,0.1); }
+
+  /* ── GAME LIBRARY ── */
+  #library-modal {
+    display: none; position: fixed; inset: 0;
+    background: rgba(0,0,0,0.75); z-index: 10001;
+    align-items: center; justify-content: center;
+  }
+  #library-modal.show { display: flex; }
+  .library-box {
+    background: var(--panel); border: 1px solid var(--border); border-radius: 6px;
+    width: min(920px, 96vw); height: min(620px, 92vh);
+    display: flex; flex-direction: column; overflow: hidden;
+  }
+  .library-header {
+    display: flex; align-items: center; justify-content: space-between;
+    padding: 13px 18px; border-bottom: 1px solid var(--border); flex-shrink: 0;
+    font-family: 'Playfair Display', serif; font-size: 1rem; color: var(--accent);
+  }
+  .library-close {
+    background: none; border: none; color: var(--muted);
+    font-size: 1.1rem; cursor: pointer; padding: 2px 8px; flex: none;
+    border-radius: 2px; transition: color 0.1s;
+  }
+  .library-close:hover { color: var(--text); }
+  .library-toolbar {
+    display: flex; align-items: center; gap: 10px; flex-wrap: wrap;
+    padding: 10px 18px; border-bottom: 1px solid var(--border); flex-shrink: 0;
+  }
+  #lib-search {
+    background: var(--surface); border: 1px solid var(--border); border-radius: 2px;
+    color: var(--text); font-family: 'JetBrains Mono', monospace;
+    font-size: 0.72rem; padding: 6px 10px; width: 210px;
+  }
+  #lib-search:focus { outline: 1px solid var(--accent); }
+  #lib-search::placeholder { color: var(--muted); }
+  .cpills { display: flex; gap: 6px; flex-wrap: wrap; flex: 1; }
+  .cpill {
+    display: flex; align-items: center; gap: 4px;
+    padding: 3px 6px 3px 10px; border-radius: 20px;
+    font-size: 0.64rem; background: var(--surface); border: 1px solid var(--border);
+    cursor: pointer; color: var(--text); transition: all 0.1s; user-select: none;
+  }
+  .cpill:hover { border-color: var(--accent); }
+  .cpill.active { background: var(--accent); color: #0e0e0f; border-color: var(--accent); }
+  .cpill-x { font-size: 0.58rem; padding: 1px 3px; border-radius: 50%; opacity: 0.6; }
+  .cpill-x:hover { opacity: 1; background: rgba(0,0,0,0.2); }
+  .add-col-btn {
+    background: var(--surface); border: 1px solid var(--border); border-radius: 2px;
+    color: var(--muted); font-family: 'JetBrains Mono', monospace;
+    font-size: 0.68rem; padding: 5px 10px; cursor: pointer;
+    white-space: nowrap; transition: all 0.15s; flex-shrink: 0;
+  }
+  .add-col-btn:hover { border-color: var(--accent); color: var(--accent); }
+  .library-list { flex: 1; overflow-y: auto; }
+  .library-list::-webkit-scrollbar { width: 4px; }
+  .library-list::-webkit-scrollbar-track { background: transparent; }
+  .library-list::-webkit-scrollbar-thumb { background: var(--border); }
+  .game-row {
+    display: grid; grid-template-columns: 1fr 60px 80px;
+    align-items: center; gap: 12px; padding: 9px 18px;
+    border-bottom: 1px solid rgba(255,255,255,0.04);
+    cursor: pointer; transition: background 0.1s;
+  }
+  .game-row:hover { background: rgba(255,255,255,0.05); }
+  .game-players { font-size: 0.74rem; color: var(--text); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .game-meta { font-size: 0.62rem; color: var(--muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; margin-top: 2px; }
+  .game-result { font-size: 0.65rem; color: var(--muted); text-align: right; }
+  .game-col-tag {
+    font-size: 0.58rem; padding: 2px 7px; border-radius: 10px;
+    background: rgba(129,182,76,0.12); color: var(--accent);
+    white-space: nowrap; overflow: hidden; text-overflow: ellipsis; text-align: center;
+  }
+  .library-footer {
+    padding: 7px 18px; border-top: 1px solid var(--border);
+    font-size: 0.63rem; color: var(--muted); flex-shrink: 0;
+  }
+  .lib-empty { padding: 50px 30px; text-align: center; color: var(--muted); font-size: 0.75rem; line-height: 2.2; }
 </style>
 </head>
 <body>
@@ -335,6 +412,10 @@
   </div>
 
   <div class="panel">
+    <div class="panel-section">
+      <button onclick="openLibrary()" style="width:100%" class="primary">Browse Game Library</button>
+    </div>
+
     <div class="panel-section">
       <label>Load game (PGN)</label>
       <textarea id="pgn-input" placeholder='[Event "..."]\n[White "..."]\n...\n\n1. e4 e5 2. Nf3 ...'></textarea>
@@ -367,6 +448,7 @@
 <div id="drag-ghost"></div>
 <div id="fly-piece"></div>
 
+<script src="collections.js"></script>
 <script>
 // ─────────────────────────────────────────────
 // Chess logic (no library — self-contained)
@@ -608,7 +690,9 @@ function parsePGN(pgn) {
   // Remove headers
   pgn = pgn.replace(/\[[^\]]*\]/g,'').trim();
   // Tokenise
-  const tokens = pgn.split(/\s+/).filter(t => t && !/^\d+\.+$/.test(t) && !['1-0','0-1','1/2-1/2','*'].includes(t));
+  const tokens = pgn.split(/\s+/)
+    .map(t => t.replace(/^\d+\.+/, ''))
+    .filter(t => t && !['1-0','0-1','1/2-1/2','*'].includes(t));
   return tokens;
 }
 
@@ -1088,6 +1172,7 @@ document.addEventListener('keydown', e => {
   if (e.key==='ArrowRight') stepForward();
   if (e.key==='ArrowUp') goTo(0);
   if (e.key==='ArrowDown') goTo(history.length-1);
+  if (e.key==='Escape') closeLibrary();
 });
 
 // ─────────────────────────────────────────────
@@ -1149,9 +1234,186 @@ function setStatus(msg, cls) {
   el.className = 'status' + (cls?' '+cls:'');
 }
 
+// ─────────────────────────────────────────────
+// Game Library
+// ─────────────────────────────────────────────
+
+let gameCollections = {}; // { filename: { name, games[] } }
+let libFilter = null;     // collection name to filter by, or null = all
+
+function loadStoredCollections() {
+  try {
+    const raw = localStorage.getItem('gameCollections');
+    if (raw) gameCollections = JSON.parse(raw);
+  } catch(e) { gameCollections = {}; }
+}
+
+function saveCollectionsToStorage() {
+  try {
+    localStorage.setItem('gameCollections', JSON.stringify(gameCollections));
+  } catch(e) { /* quota exceeded — still works in-memory */ }
+}
+
+function parseMultiGamePGN(text, collectionName) {
+  const games = [];
+  // Locate each game by [Event header position
+  const starts = [];
+  const re = /^\[Event\s/gm;
+  let m;
+  while ((m = re.exec(text)) !== null) starts.push(m.index);
+
+  for (let i = 0; i < starts.length; i++) {
+    const chunk = text.slice(starts[i], i + 1 < starts.length ? starts[i + 1] : text.length).trim();
+    const headers = {};
+    for (const hm of chunk.matchAll(/^\[(\w+)\s+"([^"]*)"\]/gm)) headers[hm[1]] = hm[2];
+    if (!headers.White) continue;
+    games.push({
+      event:      headers.Event  || '?',
+      white:      headers.White  || '?',
+      black:      headers.Black  || '?',
+      year:       headers.Date   ? headers.Date.split('.')[0] : '?',
+      result:     headers.Result || '?',
+      pgn:        chunk,
+      collection: collectionName
+    });
+  }
+  return games;
+}
+
+function handleCollectionFiles(input) {
+  const files = Array.from(input.files);
+  let pending = files.length;
+  files.forEach(file => {
+    const reader = new FileReader();
+    reader.onload = e => {
+      const name = file.name.replace(/\.pgn$/i, '');
+      gameCollections[file.name] = { name, games: parseMultiGamePGN(e.target.result, name) };
+      if (--pending === 0) { saveCollectionsToStorage(); renderLibrary(); }
+    };
+    reader.readAsText(file);
+  });
+  input.value = '';
+}
+
+function removeCollection(filename, e) {
+  e.stopPropagation();
+  const name = gameCollections[filename]?.name;
+  delete gameCollections[filename];
+  if (libFilter === name) libFilter = null;
+  saveCollectionsToStorage();
+  renderLibrary();
+}
+
+function openLibrary() {
+  document.getElementById('library-modal').classList.add('show');
+  renderLibrary();
+  setTimeout(() => document.getElementById('lib-search')?.focus(), 50);
+}
+
+function closeLibrary() {
+  document.getElementById('library-modal').classList.remove('show');
+}
+
+function renderLibrary() {
+  // Pills
+  const pillsEl = document.getElementById('cpills');
+  pillsEl.innerHTML = '';
+  for (const [filename, col] of Object.entries(gameCollections)) {
+    const pill = document.createElement('span');
+    pill.className = 'cpill' + (libFilter === col.name ? ' active' : '');
+    const label = document.createElement('span');
+    label.textContent = `${col.name} (${col.games.length})`;
+    label.onclick = () => { libFilter = libFilter === col.name ? null : col.name; renderLibrary(); };
+    const x = document.createElement('span');
+    x.className = 'cpill-x';
+    x.textContent = '✕';
+    x.onclick = e => removeCollection(filename, e);
+    pill.appendChild(label);
+    pill.appendChild(x);
+    pillsEl.appendChild(pill);
+  }
+  renderGameList();
+}
+
+function renderGameList() {
+  const listEl   = document.getElementById('library-list');
+  const footerEl = document.getElementById('library-footer');
+  const query    = (document.getElementById('lib-search')?.value || '').toLowerCase();
+  const allGames = Object.values(gameCollections).flatMap(c => c.games);
+
+  if (!allGames.length) {
+    listEl.innerHTML = `<div class="lib-empty">No collections loaded.<br>Click <strong>+ Add Collection</strong> to load a .pgn file.</div>`;
+    footerEl.textContent = '';
+    return;
+  }
+
+  const games = allGames.filter(g => {
+    if (libFilter && g.collection !== libFilter) return false;
+    if (!query) return true;
+    return `${g.white} ${g.black} ${g.event} ${g.year} ${g.collection}`.toLowerCase().includes(query);
+  });
+
+  if (!games.length) {
+    listEl.innerHTML = `<div class="lib-empty">No games match.</div>`;
+    footerEl.textContent = '0 games';
+    return;
+  }
+
+  listEl.innerHTML = '';
+  const frag = document.createDocumentFragment();
+  for (const g of games) {
+    const row = document.createElement('div');
+    row.className = 'game-row';
+    row.innerHTML = `
+      <div>
+        <div class="game-players">${g.white} <span style="color:var(--muted)">vs</span> ${g.black}</div>
+        <div class="game-meta">${g.event}${g.year !== '?' ? ' · ' + g.year : ''}</div>
+      </div>
+      <div class="game-result">${g.result}</div>
+      <div class="game-col-tag">${g.collection}</div>`;
+    row.onclick = () => { document.getElementById('pgn-input').value = g.pgn; closeLibrary(); loadPGN(); };
+    frag.appendChild(row);
+  }
+  listEl.appendChild(frag);
+  footerEl.textContent = `${games.length} game${games.length !== 1 ? 's' : ''}${libFilter ? ` · ${libFilter}` : ''}${query ? ` · "${query}"` : ''}`;
+}
+
+loadStoredCollections();
+
+// Auto-load any bundled collections not already in localStorage
+if (window.BUNDLED_COLLECTIONS) {
+  let changed = false;
+  for (const { filename, pgn } of window.BUNDLED_COLLECTIONS) {
+    if (!gameCollections[filename]) {
+      const name = filename.replace(/\.pgn$/i, '');
+      gameCollections[filename] = { name, games: parseMultiGamePGN(pgn, name) };
+      changed = true;
+    }
+  }
+  if (changed) saveCollectionsToStorage();
+}
+
 renderAll();
 setStatus('White to move.', '');
 </script>
+
+<input type="file" id="pgn-file-input" accept=".pgn" multiple style="display:none" onchange="handleCollectionFiles(this)">
+
+<div id="library-modal">
+  <div class="library-box">
+    <div class="library-header">
+      Game Library
+      <button class="library-close" onclick="closeLibrary()">✕</button>
+    </div>
+    <div class="library-toolbar">
+      <input id="lib-search" type="text" placeholder="Search players, event, year..." oninput="renderGameList()">
+      <div class="cpills" id="cpills"></div>
+      <button class="add-col-btn" onclick="document.getElementById('pgn-file-input').click()">+ Add Collection</button>
+    </div>
+    <div class="library-list" id="library-list"></div>
+    <div class="library-footer" id="library-footer"></div>
+  </div>
+</div>
 
 <div id="promo-modal">
   <div class="promo-box">
