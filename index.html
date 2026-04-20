@@ -329,7 +329,7 @@
   #library-modal.show { display: flex; }
   .library-box {
     background: var(--panel); border: 1px solid var(--border); border-radius: 6px;
-    width: min(920px, 96vw); height: min(620px, 92vh);
+    width: min(560px, 96vw); height: min(620px, 92vh);
     display: flex; flex-direction: column; overflow: hidden;
   }
   .library-header {
@@ -350,34 +350,16 @@
   #lib-search {
     background: var(--surface); border: 1px solid var(--border); border-radius: 2px;
     color: var(--text); font-family: 'JetBrains Mono', monospace;
-    font-size: 0.72rem; padding: 6px 10px; width: 210px;
+    font-size: 0.72rem; padding: 6px 10px; flex: 1;
   }
   #lib-search:focus { outline: 1px solid var(--accent); }
   #lib-search::placeholder { color: var(--muted); }
-  .cpills { display: flex; gap: 6px; flex-wrap: wrap; flex: 1; }
-  .cpill {
-    display: flex; align-items: center; gap: 4px;
-    padding: 3px 6px 3px 10px; border-radius: 20px;
-    font-size: 0.64rem; background: var(--surface); border: 1px solid var(--border);
-    cursor: pointer; color: var(--text); transition: all 0.1s; user-select: none;
-  }
-  .cpill:hover { border-color: var(--accent); }
-  .cpill.active { background: var(--accent); color: #0e0e0f; border-color: var(--accent); }
-  .cpill-x { font-size: 0.58rem; padding: 1px 3px; border-radius: 50%; opacity: 0.6; }
-  .cpill-x:hover { opacity: 1; background: rgba(0,0,0,0.2); }
-  .add-col-btn {
-    background: var(--surface); border: 1px solid var(--border); border-radius: 2px;
-    color: var(--muted); font-family: 'JetBrains Mono', monospace;
-    font-size: 0.68rem; padding: 5px 10px; cursor: pointer;
-    white-space: nowrap; transition: all 0.15s; flex-shrink: 0;
-  }
-  .add-col-btn:hover { border-color: var(--accent); color: var(--accent); }
   .library-list { flex: 1; overflow-y: auto; }
   .library-list::-webkit-scrollbar { width: 4px; }
   .library-list::-webkit-scrollbar-track { background: transparent; }
   .library-list::-webkit-scrollbar-thumb { background: var(--border); }
   .game-row {
-    display: grid; grid-template-columns: 1fr 60px 80px;
+    display: grid; grid-template-columns: 1fr 60px;
     align-items: center; gap: 12px; padding: 9px 18px;
     border-bottom: 1px solid rgba(255,255,255,0.04);
     cursor: pointer; transition: background 0.1s;
@@ -386,11 +368,6 @@
   .game-players { font-size: 0.74rem; color: var(--text); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   .game-meta { font-size: 0.62rem; color: var(--muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; margin-top: 2px; }
   .game-result { font-size: 0.65rem; color: var(--muted); text-align: right; }
-  .game-col-tag {
-    font-size: 0.58rem; padding: 2px 7px; border-radius: 10px;
-    background: rgba(129,182,76,0.12); color: var(--accent);
-    white-space: nowrap; overflow: hidden; text-overflow: ellipsis; text-align: center;
-  }
   .library-footer {
     padding: 7px 18px; border-top: 1px solid var(--border);
     font-size: 0.63rem; color: var(--muted); flex-shrink: 0;
@@ -1239,7 +1216,6 @@ function setStatus(msg, cls) {
 // ─────────────────────────────────────────────
 
 let gameCollections = {}; // { filename: { name, games[] } }
-let libFilter = null;     // collection name to filter by, or null = all
 
 function loadStoredCollections() {
   try {
@@ -1290,33 +1266,10 @@ function parseMultiGamePGN(text, collectionName) {
   return games;
 }
 
-function handleCollectionFiles(input) {
-  const files = Array.from(input.files);
-  let pending = files.length;
-  files.forEach(file => {
-    const reader = new FileReader();
-    reader.onload = e => {
-      const name = file.name.replace(/\.pgn$/i, '');
-      gameCollections[file.name] = { name, games: parseMultiGamePGN(e.target.result, name) };
-      if (--pending === 0) { saveCollectionsToStorage(); renderLibrary(); }
-    };
-    reader.readAsText(file);
-  });
-  input.value = '';
-}
-
-function removeCollection(filename, e) {
-  e.stopPropagation();
-  const name = gameCollections[filename]?.name;
-  delete gameCollections[filename];
-  if (libFilter === name) libFilter = null;
-  saveCollectionsToStorage();
-  renderLibrary();
-}
 
 function openLibrary() {
   document.getElementById('library-modal').classList.add('show');
-  renderLibrary();
+  renderGameList();
   setTimeout(() => document.getElementById('lib-search')?.focus(), 50);
 }
 
@@ -1324,25 +1277,11 @@ function closeLibrary() {
   document.getElementById('library-modal').classList.remove('show');
 }
 
-function renderLibrary() {
-  // Pills
-  const pillsEl = document.getElementById('cpills');
-  pillsEl.innerHTML = '';
-  for (const [filename, col] of Object.entries(gameCollections)) {
-    const pill = document.createElement('span');
-    pill.className = 'cpill' + (libFilter === col.name ? ' active' : '');
-    const label = document.createElement('span');
-    label.textContent = `${col.name} (${col.games.length})`;
-    label.onclick = () => { libFilter = libFilter === col.name ? null : col.name; renderLibrary(); };
-    const x = document.createElement('span');
-    x.className = 'cpill-x';
-    x.textContent = '✕';
-    x.onclick = e => removeCollection(filename, e);
-    pill.appendChild(label);
-    pill.appendChild(x);
-    pillsEl.appendChild(pill);
-  }
-  renderGameList();
+function highlight(text, query) {
+  if (!query) return text;
+  const i = text.toLowerCase().indexOf(query.toLowerCase());
+  if (i === -1) return text;
+  return text.slice(0, i) + `<span style="color:var(--accent)">${text.slice(i, i + query.length)}</span>` + text.slice(i + query.length);
 }
 
 function renderGameList() {
@@ -1357,11 +1296,9 @@ function renderGameList() {
     return;
   }
 
-  const games = allGames.filter(g => {
-    if (libFilter && g.collection !== libFilter) return false;
-    if (!query) return true;
-    return `${g.white} ${g.black} ${g.event} ${g.year} ${g.collection}`.toLowerCase().includes(query);
-  });
+  const games = allGames.filter(g =>
+    !query || `${g.white} ${g.black}`.toLowerCase().includes(query)
+  );
 
   if (!games.length) {
     listEl.innerHTML = `<div class="lib-empty">No games match.</div>`;
@@ -1376,16 +1313,15 @@ function renderGameList() {
     row.className = 'game-row';
     row.innerHTML = `
       <div>
-        <div class="game-players">${g.white} <span style="color:var(--muted)">vs</span> ${g.black}</div>
+        <div class="game-players">${highlight(g.white, query)} <span style="color:var(--muted)">vs</span> ${highlight(g.black, query)}</div>
         <div class="game-meta">${g.event}${g.year !== '?' ? ' · ' + g.year : ''}</div>
       </div>
-      <div class="game-result">${g.result}</div>
-      <div class="game-col-tag">${g.collection}</div>`;
+      <div class="game-result">${g.result}</div>`;
     row.onclick = () => { document.getElementById('pgn-input').value = g.pgn; closeLibrary(); loadPGN(); };
     frag.appendChild(row);
   }
   listEl.appendChild(frag);
-  footerEl.textContent = `${games.length} game${games.length !== 1 ? 's' : ''}${libFilter ? ` · ${libFilter}` : ''}${query ? ` · "${query}"` : ''}`;
+  footerEl.textContent = `${games.length} game${games.length !== 1 ? 's' : ''}${query ? ` matching "${query}"` : ''}`;
 }
 
 loadStoredCollections();
@@ -1407,8 +1343,6 @@ renderAll();
 setStatus('White to move.', '');
 </script>
 
-<input type="file" id="pgn-file-input" accept=".pgn" multiple style="display:none" onchange="handleCollectionFiles(this)">
-
 <div id="library-modal">
   <div class="library-box">
     <div class="library-header">
@@ -1416,9 +1350,7 @@ setStatus('White to move.', '');
       <button class="library-close" onclick="closeLibrary()">✕</button>
     </div>
     <div class="library-toolbar">
-      <input id="lib-search" type="text" placeholder="Search players, event, year..." oninput="renderGameList()">
-      <div class="cpills" id="cpills"></div>
-      <button class="add-col-btn" onclick="document.getElementById('pgn-file-input').click()">+ Add Collection</button>
+      <input id="lib-search" type="text" placeholder="Search by player name..." oninput="renderGameList()">
     </div>
     <div class="library-list" id="library-list"></div>
     <div class="library-footer" id="library-footer"></div>
