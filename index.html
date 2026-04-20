@@ -373,6 +373,14 @@
     font-size: 0.63rem; color: var(--muted); flex-shrink: 0;
   }
   .lib-empty { padding: 50px 30px; text-align: center; color: var(--muted); font-size: 0.75rem; line-height: 2.2; }
+
+  /* ── GAME INFO ── */
+  .gi-players {
+    font-family: 'Playfair Display', serif;
+    font-size: 0.95rem; color: var(--text); line-height: 1.5;
+  }
+  .gi-meta { font-size: 0.63rem; color: var(--muted); margin-top: 5px; }
+  .gi-result { font-size: 0.7rem; color: var(--accent); margin-top: 4px; }
 </style>
 </head>
 <body>
@@ -394,14 +402,17 @@
     </div>
 
     <div class="panel-section">
-      <label>Load game (PGN)</label>
-      <textarea id="pgn-input" placeholder='[Event "..."]\n[White "..."]\n...\n\n1. e4 e5 2. Nf3 ...'></textarea>
-      <div class="btn-row" style="margin-top:8px">
-        <button class="primary" onclick="loadPGN()">Load Game</button>
-        <button onclick="loadExample()">Example</button>
+      <div id="game-info-inner"><span style="color:var(--muted);font-size:0.72rem">No game loaded.</span></div>
+    </div>
+
+    <div class="panel-section">
+      <div class="btn-row">
+        <button onclick="loadRandom()">Random Game</button>
         <button onclick="resetBoard()">Reset</button>
       </div>
     </div>
+
+    <textarea id="pgn-input" style="display:none"></textarea>
 
     <div class="panel-section">
       <label>Navigate</label>
@@ -742,12 +753,28 @@ function initHistory(state) {
 
 resetBoard();
 
+function updateGameInfo(pgn) {
+  const el = document.getElementById('game-info-inner');
+  if (!pgn) { el.innerHTML = '<span style="color:var(--muted);font-size:0.72rem">No game loaded.</span>'; return; }
+  const h = {};
+  for (const m of pgn.matchAll(/^\[(\w+)\s+"([^"]*)"\]/gm)) h[m[1]] = m[2];
+  const meta = [h.Event, h.Site, h.Date?.split('.')[0]].filter(s => s && s !== '?').join(' · ');
+  el.innerHTML = `
+    <div class="gi-players">${h.White || '?'}<br>
+      <span style="color:var(--muted);font-size:0.72rem">vs</span><br>
+      ${h.Black || '?'}
+    </div>
+    ${meta ? `<div class="gi-meta">${meta}</div>` : ''}
+    ${h.Result ? `<div class="gi-result">${h.Result}</div>` : ''}`;
+}
+
 function resetBoard() {
   const state = parseFEN(startFEN());
   initHistory(state);
   selected = null;
   validMoves = [];
   renderAll();
+  updateGameInfo(null);
   setStatus('Ready — load a PGN or move pieces freely.', '');
 }
 
@@ -1183,24 +1210,18 @@ function loadPGN() {
     currentIdx = states.length - 1;
     selected = null; validMoves = [];
     renderAll();
+    updateGameInfo(pgn);
     setStatus(`Loaded ${tokens.length} moves. Use ◀▶ or click moves to navigate.`, 'ok');
   } catch(err) {
     setStatus('Error: ' + err.message, 'error');
   }
 }
 
-function loadExample() {
-  // Immortal Game 1851: Anderssen vs Kieseritzky
-  const pgn = `[Event "London"]
-[White "Anderssen, A"]
-[Black "Kieseritzky, L"]
-[Result "1-0"]
-
-1. e4 e5 2. f4 exf4 3. Bc4 Qh4+ 4. Kf1 b5 5. Bxb5 Nf6 6. Nf3 Qh6 7. d3 Nh5
-8. Nh4 Qg5 9. Nf5 c6 10. g4 Nf6 11. Rg1 cxb5 12. h4 Qg6 13. h5 Qg5
-14. Qf3 Ng8 15. Bxf4 Qf6 16. Nc3 Bc5 17. Nd5 Qxb2 18. Bd6 Bxg1
-19. e5 Qxa1+ 20. Ke2 Na6 21. Nxg7+ Kd8 22. Qf6+ Nxf6 23. Be7# 1-0`;
-  document.getElementById('pgn-input').value = pgn;
+function loadRandom() {
+  const all = Object.values(gameCollections).flatMap(c => c.games);
+  if (!all.length) { setStatus('No games in library.', 'error'); return; }
+  const g = all[Math.floor(Math.random() * all.length)];
+  document.getElementById('pgn-input').value = g.pgn;
   loadPGN();
 }
 
@@ -1277,28 +1298,34 @@ function closeLibrary() {
   document.getElementById('library-modal').classList.remove('show');
 }
 
-function highlight(text, query) {
-  if (!query) return text;
-  const i = text.toLowerCase().indexOf(query.toLowerCase());
-  if (i === -1) return text;
-  return text.slice(0, i) + `<span style="color:var(--accent)">${text.slice(i, i + query.length)}</span>` + text.slice(i + query.length);
+function highlight(text, terms) {
+  if (!terms.length) return text;
+  let result = text;
+  for (const term of terms) {
+    result = result.replace(new RegExp(`(${term.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')})`, 'gi'),
+      `<span style="color:var(--accent)">$1</span>`);
+  }
+  return result;
 }
 
 function renderGameList() {
   const listEl   = document.getElementById('library-list');
   const footerEl = document.getElementById('library-footer');
-  const query    = (document.getElementById('lib-search')?.value || '').toLowerCase();
+  const raw      = (document.getElementById('lib-search')?.value || '').trim();
+  const terms    = raw.toLowerCase().split(/\s+/).filter(Boolean);
   const allGames = Object.values(gameCollections).flatMap(c => c.games);
 
   if (!allGames.length) {
-    listEl.innerHTML = `<div class="lib-empty">No collections loaded.<br>Click <strong>+ Add Collection</strong> to load a .pgn file.</div>`;
+    listEl.innerHTML = `<div class="lib-empty">No collections loaded.</div>`;
     footerEl.textContent = '';
     return;
   }
 
-  const games = allGames.filter(g =>
-    !query || `${g.white} ${g.black}`.toLowerCase().includes(query)
-  );
+  const games = allGames.filter(g => {
+    if (!terms.length) return true;
+    const players = `${g.white} ${g.black}`.toLowerCase();
+    return terms.every(t => players.includes(t));
+  });
 
   if (!games.length) {
     listEl.innerHTML = `<div class="lib-empty">No games match.</div>`;
@@ -1313,7 +1340,7 @@ function renderGameList() {
     row.className = 'game-row';
     row.innerHTML = `
       <div>
-        <div class="game-players">${highlight(g.white, query)} <span style="color:var(--muted)">vs</span> ${highlight(g.black, query)}</div>
+        <div class="game-players">${highlight(g.white, terms)} <span style="color:var(--muted)">vs</span> ${highlight(g.black, terms)}</div>
         <div class="game-meta">${g.event}${g.year !== '?' ? ' · ' + g.year : ''}</div>
       </div>
       <div class="game-result">${g.result}</div>`;
@@ -1321,7 +1348,7 @@ function renderGameList() {
     frag.appendChild(row);
   }
   listEl.appendChild(frag);
-  footerEl.textContent = `${games.length} game${games.length !== 1 ? 's' : ''}${query ? ` matching "${query}"` : ''}`;
+  footerEl.textContent = `${games.length} game${games.length !== 1 ? 's' : ''}${raw ? ` matching "${raw}"` : ''}`;
 }
 
 loadStoredCollections();
