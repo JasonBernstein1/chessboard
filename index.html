@@ -1219,18 +1219,8 @@ function goTo(targetIdx) {
         checkGameEnd();
       }
     } else {
-      const move = history[prevIdx]._move;  // the move being undone
-      if (move) {
-        // Keep post-move DOM, fly piece back, then render pre-move state
-        const piece = history[prevIdx].board[move.to];
-        animatePieceMove(move.to, move.from, piece || 'wP', () => {
-          renderAll();
-          checkGameEnd();
-        });
-      } else {
-        renderAll();
-        checkGameEnd();
-      }
+      renderAll();
+      checkGameEnd();
     }
   } else {
     renderAll();
