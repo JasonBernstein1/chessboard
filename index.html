@@ -22,7 +22,48 @@
     --muted: #7a756e;
     --highlight: rgba(255,255,50,0.5);
     --moved: rgba(255,255,50,0.35);
+    --coord: #a09a92;
   }
+
+  body.light {
+    --bg: #d8d8ce;
+    --surface: #e8e8e2;
+    --panel: #ddddd6;
+    --border: #c0c0b8;
+    --light-sq: #f0d9b5;
+    --dark-sq: #b58863;
+    --accent: #5a8a2e;
+    --accent2: #3a9a70;
+    --text: #1a1a18;
+    --muted: #6a6560;
+    --highlight: rgba(200,180,0,0.5);
+    --moved: rgba(200,180,0,0.35);
+    --coord: #7a7068;
+  }
+
+  body.light {
+    background-image: none;
+  }
+
+  body.light #board {
+    box-shadow: none;
+  }
+
+  #theme-toggle {
+    position: fixed;
+    top: 16px;
+    right: 16px;
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 2px;
+    color: var(--text);
+    font-size: 1rem;
+    padding: 6px 10px;
+    cursor: pointer;
+    transition: all 0.15s;
+    z-index: 9999;
+  }
+  #theme-toggle:hover { border-color: var(--accent); }
 
   body {
     background: var(--bg);
@@ -130,7 +171,7 @@
   }
   .coords-file span, .coords-rank span {
     font-size: 0.75rem;
-    color: #a09a92;
+    color: var(--coord);
     text-align: center;
     font-family: 'JetBrains Mono', monospace;
   }
@@ -197,7 +238,7 @@
     flex: 1;
   }
   button:hover { border-color: var(--accent); color: var(--accent); }
-  button.primary { background: var(--accent); color: #0e0e0f; border-color: var(--accent); font-weight: 500; }
+  button.primary { background: var(--accent); color: var(--bg); border-color: var(--accent); font-weight: 500; }
   button.primary:hover { background: #e0b850; }
 
   /* Navigation */
@@ -433,6 +474,7 @@
   </div>
 </div>
 
+<button id="theme-toggle" onclick="toggleTheme()" title="Toggle light/dark mode">🌙</button>
 <div id="drag-ghost"></div>
 <div id="fly-piece"></div>
 
@@ -766,6 +808,12 @@ function updateGameInfo(pgn) {
     </div>
     ${meta ? `<div class="gi-meta">${meta}</div>` : ''}
     ${h.Result ? `<div class="gi-result">${h.Result}</div>` : ''}`;
+}
+
+function toggleTheme() {
+  const isLight = document.body.classList.toggle('light');
+  localStorage.setItem('theme', isLight ? 'light' : 'dark');
+  document.getElementById('theme-toggle').textContent = isLight ? '☀️' : '🌙';
 }
 
 function resetBoard() {
@@ -1366,6 +1414,11 @@ if (window.BUNDLED_COLLECTIONS) {
     }
   }
   if (changed) saveCollectionsToStorage();
+}
+
+if (localStorage.getItem('theme') === 'light') {
+  document.body.classList.add('light');
+  document.getElementById('theme-toggle').textContent = '☀️';
 }
 
 renderAll();
