@@ -882,7 +882,7 @@ function renderBoard() {
 }
 
 // Animate a piece flying from one square to another using rAF lerp
-function animatePieceMove(fromIdx, toIdx, pieceCode) {
+function animatePieceMove(fromIdx, toIdx, pieceCode, onComplete) {
   const SQ = 90;
   const boardEl = document.getElementById('board');
   const boardRect = boardEl.getBoundingClientRect();
@@ -898,20 +898,22 @@ function animatePieceMove(fromIdx, toIdx, pieceCode) {
   const from = sqCenter(fromIdx);
   const to   = sqCenter(toIdx);
 
-  // Distance-proportional duration: 1 square = 80ms, max 260ms
   const dist = Math.hypot(to.x - from.x, to.y - from.y);
   const duration = Math.min(1000, Math.max(400, dist * 1.4));
 
-  // Hide the piece already rendered at the destination until animation completes
+  // Hide source and destination pieces in the DOM during animation
+  const srcSq = document.querySelector(`#board .sq[data-idx="${fromIdx}"]`);
+  const srcPieceEl = srcSq?.querySelector('.piece');
+  if (srcPieceEl) srcPieceEl.style.visibility = 'hidden';
+
   const destSq = document.querySelector(`#board .sq[data-idx="${toIdx}"]`);
   const destPieceEl = destSq?.querySelector('.piece');
   if (destPieceEl) destPieceEl.style.visibility = 'hidden';
 
   const fly = document.getElementById('fly-piece');
-  const piece = pieceCode;
   fly.innerHTML = '';
   const flyImg = document.createElement('img');
-  flyImg.src = PIECE_IMG[piece];
+  flyImg.src = PIECE_IMG[pieceCode];
   flyImg.style.cssText = 'width:80px;height:80px;display:block';
   fly.appendChild(flyImg);
   fly.style.left = from.x + 'px';
@@ -922,7 +924,6 @@ function animatePieceMove(fromIdx, toIdx, pieceCode) {
 
   function frame(now) {
     const t = Math.min(1, (now - start) / duration);
-    // ease in-out
     const e = t < 0.5 ? 2*t*t : -1+(4-2*t)*t;
     fly.style.left = (from.x + (to.x - from.x) * e) + 'px';
     fly.style.top  = (from.y + (to.y - from.y) * e) + 'px';
@@ -930,7 +931,9 @@ function animatePieceMove(fromIdx, toIdx, pieceCode) {
       requestAnimationFrame(frame);
     } else {
       fly.style.display = 'none';
+      if (srcPieceEl) srcPieceEl.style.visibility = '';
       if (destPieceEl) destPieceEl.style.visibility = '';
+      if (onComplete) onComplete();
     }
   }
   requestAnimationFrame(frame);
@@ -1201,21 +1204,38 @@ function goTo(targetIdx) {
   currentIdx = Math.max(0, Math.min(targetIdx, history.length-1));
   selected = null; validMoves = [];
 
-  // Animate if stepping one move forward or backward
-  const move = history[currentIdx]._move;
-  const stepping = Math.abs(currentIdx - prevIdx) === 1 && move;
+  const stepping = Math.abs(currentIdx - prevIdx) === 1;
   if (stepping) {
     const going_forward = currentIdx > prevIdx;
-    const fromSq = going_forward ? move.from : move.to;
-    const toSq   = going_forward ? move.to   : move.from;
-    const piece  = currentState().board[going_forward ? toSq : fromSq]
-                   || history[prevIdx].board[going_forward ? move.from : move.to];
-    renderAll();
-    animatePieceMove(fromSq, toSq, piece || 'wP');
+    if (going_forward) {
+      const move = history[currentIdx]._move;
+      if (move) {
+        const piece = currentState().board[move.to] || history[prevIdx].board[move.from];
+        renderAll();
+        animatePieceMove(move.from, move.to, piece || 'wP');
+        checkGameEnd();
+      } else {
+        renderAll();
+        checkGameEnd();
+      }
+    } else {
+      const move = history[prevIdx]._move;  // the move being undone
+      if (move) {
+        // Keep post-move DOM, fly piece back, then render pre-move state
+        const piece = history[prevIdx].board[move.to];
+        animatePieceMove(move.to, move.from, piece || 'wP', () => {
+          renderAll();
+          checkGameEnd();
+        });
+      } else {
+        renderAll();
+        checkGameEnd();
+      }
+    }
   } else {
     renderAll();
+    checkGameEnd();
   }
-  checkGameEnd();
 }
 function stepBack() { goTo(currentIdx-1); }
 function stepForward() { goTo(currentIdx+1); }
